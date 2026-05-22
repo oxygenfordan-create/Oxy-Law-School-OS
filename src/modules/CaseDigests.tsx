@@ -22,37 +22,103 @@ const defaultDigest = {
 
 function parseCaseText(rawText: string) {
   const normalized = rawText.trim().replace(/\r/g, '');
-  const lines = normalized.split('\n').map((line) => line.trim());
+  const lines = normalized.split('\n').map((line) => line.trim()).filter(Boolean);
 
   // Extract title and citation from the top
   let title = '';
   let citation = '';
   let contentStart = 0;
 
-  // First non-empty line is often the case name
   if (lines.length > 0 && lines[0]) {
     title = lines[0];
     contentStart = 1;
   }
 
-  // Look for citation in the next few lines (contains numbers, court abbreviations, or year)
+  // Look for citation in the next few lines
   for (let i = contentStart; i < Math.min(contentStart + 5, lines.length); i++) {
-    if (/(\d{1,3}\s+[A-Z]{0,3}\s+\d{3}|U\.S\.|S\.Ct\.|F\.|No\.|Case No\.|[0-9]{4})/.test(lines[i])) {
+    if (/(\d{1,3}\s+[A-Z]{0,3}\s+\d{3}|U\.S\.|S\.Ct\.|F\.|No\.|Case No\.|[0-9]{4}|[0-9]{4}\s+[A-Z])/.test(lines[i])) {
       citation = lines[i];
       contentStart = i + 1;
       break;
     }
   }
 
-  // Extract section headers more robustly
-  const sectionPatterns: Record<string, RegExp> = {
-    facts: /^(FACTS|Facts|STATEMENT OF FACTS|Statement of Facts|Background|Background Facts|Relevant Facts)[:\.]?\s*$/i,
-    issue: /^(ISSUE|Issues|Issue|LEGAL ISSUE|Legal Issues|Question Presented|Question Presented)[:\.]?\s*$/i,
-    ruling: /^(RULING|Holding|HOLDING|Decision|DECISION|Court's Decision|Court's Holding)[:\.]?\s*$/i,
-    doctrine: /^(DOCTRINE|Rule of Law|RULE OF LAW|Legal Rule|Applicable Law|APPLICABLE LAW|Analysis|ANALYSIS|Discussion|DISCUSSION)[:\.]?\s*$/i,
-    opinions: /^(SEPARATE OPINIONS|Concurring|CONCURRING|Dissenting|DISSENTING|Dissent|Opinion)[:\.]?\s*$/i
+  // Get body text
+  const bodyText = lines.slice(contentStart).join('\n');
+  const paragraphs = bodyText
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter((p) => p.length > 20);
+
+  // Linguistic heuristics to identify sections
+  const identifySection = (text: string): string => {
+    const lower = text.toLowerCase();
+
+    // Facts indicators
+    if (
+      /^(the|on|in|a|defendants?|plaintiff|parties|claimant|appellant|respondent|circumstances?)/i.test(
+        text
+      ) ||
+      /occurred|happened|took place|facts are|background|facts of the case/.test(lower)
+    ) {
+      return 'facts';
+    }
+
+    // Issue indicators
+    if (
+      /whether|does|did|is|can|should|must|may|shall|the question|the issue|whether or not|was/.test(
+        lower
+      ) &&
+      /\?/.test(text)
+    ) {
+      return 'issue';
+    }
+    if (
+      /issue|question|problem|dispute|presented|raised|before|court|appellant|respondent/.test(lower) &&
+      (text.length > 50 || /is|are|does|do|was|were|should|would/.test(lower))
+    ) {
+      return 'issue';
+    }
+
+    // Ruling/Holding indicators
+    if (
+      /held|held that|the court|we hold|affirmed|reversed|remanded|judgment|decree|decision|ruled|court concludes/.test(
+        lower
+      )
+    ) {
+      return 'ruling';
+    }
+    if (
+      /therefore|thus|accordingly|consequently|for the foregoing|in conclusion|the judgment|the order/.test(
+        lower
+      )
+    ) {
+      return 'ruling';
+    }
+
+    // Doctrine/Rule indicators
+    if (
+      /rule|law|principle|doctrine|standard|test|requirement|element|factor|proof|burden|must show|established/.test(
+        lower
+      ) &&
+      text.length > 60
+    ) {
+      return 'doctrine';
+    }
+
+    // Separate opinions
+    if (/concur|dissent|agree|disagree|wrote|join|opinion/.test(lower)) {
+      return 'opinions';
+    }
+
+    // Default based on position
+    if (paragraphs.indexOf(text) === 0) return 'facts';
+    if (paragraphs.indexOf(text) === 1) return 'issue';
+    if (paragraphs.indexOf(text) === paragraphs.length - 1) return 'opinions';
+    return 'doctrine';
   };
 
+  // Organize paragraphs by identified section
   const sections: Record<string, string[]> = {
     facts: [],
     issue: [],
@@ -61,51 +127,13 @@ function parseCaseText(rawText: string) {
     opinions: []
   };
 
-  let currentSection = 'facts';
-  let contentLines = lines.slice(contentStart).filter(Boolean);
-
-  contentLines.forEach((line) => {
-    // Check if this line is a section header
-    let foundHeader = false;
-    for (const [sectionKey, pattern] of Object.entries(sectionPatterns)) {
-      if (pattern.test(line)) {
-        currentSection = sectionKey;
-        foundHeader = true;
-        break;
-      }
-    }
-
-    // If it's not a header, add it to the current section
-    if (!foundHeader && line.length > 0) {
-      sections[currentSection].push(line);
-    }
+  paragraphs.forEach((para) => {
+    const section = identifySection(para);
+    sections[section].push(para);
   });
 
-  // Join sections and clean up
   const joinSection = (sectionContent: string[]): string =>
-    sectionContent.join(' ').replace(/\s+/g, ' ').trim();
-
-  // If we didn't find explicit sections, use heuristics to split paragraphs
-  if (
-    !Object.values(sections).some((section) => section.length > 0) &&
-    contentLines.length > 0
-  ) {
-    const paragraphs = contentLines
-      .join('\n')
-      .split(/\n{2,}/)
-      .map((p) => p.trim())
-      .filter(Boolean);
-
-    return {
-      title: title.trim(),
-      citation: citation.trim(),
-      facts: paragraphs[0] || '',
-      issue: paragraphs[1] || '',
-      ruling: paragraphs[2] || '',
-      doctrine: paragraphs[3] || '',
-      separateOpinions: paragraphs.slice(4).join('\n\n') || ''
-    };
-  }
+    sectionContent.join('\n\n').trim();
 
   return {
     title: title.trim(),
@@ -117,6 +145,7 @@ function parseCaseText(rawText: string) {
     separateOpinions: joinSection(sections.opinions)
   };
 }
+
 
 export function CaseDigests() {
   const digests = useStore((state) => state.digests);
@@ -130,6 +159,8 @@ export function CaseDigests() {
   const [rawCaseText, setRawCaseText] = useState('');
   const [parseError, setParseError] = useState('');
   const [parsedPreview, setParsedPreview] = useState<ReturnType<typeof parseCaseText> | null>(null);
+  const [editableDigest, setEditableDigest] = useState<ReturnType<typeof parseCaseText> | null>(null);
+  const [showQuickDigest, setShowQuickDigest] = useState(false);
   const [showTimeline, setShowTimeline] = useState(false);
 
   const filtered = useMemo(() => {
@@ -164,23 +195,108 @@ export function CaseDigests() {
   const handleExport = (digestId: string) => {
     const digest = digests.find((item) => item.id === digestId);
     if (!digest) return;
+
+    // Create a styled HTML document
+    const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>${digest.title}</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 40px;
+      color: #333;
+      line-height: 1.6;
+      background: #f9f9f9;
+    }
+    h1 {
+      font-size: 28px;
+      margin-bottom: 10px;
+      border-bottom: 3px solid #4f8cff;
+      padding-bottom: 10px;
+    }
+    .citation {
+      font-size: 14px;
+      color: #666;
+      font-weight: bold;
+      margin-bottom: 20px;
+    }
+    h2 {
+      font-size: 18px;
+      margin-top: 25px;
+      margin-bottom: 10px;
+      color: #4f8cff;
+    }
+    .section {
+      background: white;
+      padding: 15px;
+      margin-bottom: 15px;
+      border-radius: 5px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .topic {
+      background: #e3f2fd;
+      padding: 10px;
+      margin-bottom: 15px;
+      border-left: 4px solid #4f8cff;
+      border-radius: 3px;
+    }
+    .tags {
+      margin-top: 20px;
+      padding-top: 20px;
+      border-top: 1px solid #ddd;
+    }
+    .tag {
+      display: inline-block;
+      background: #4f8cff;
+      color: white;
+      padding: 5px 10px;
+      margin-right: 5px;
+      border-radius: 15px;
+      font-size: 12px;
+    }
+    @media print {
+      body { background: white; }
+      .section { box-shadow: none; border: 1px solid #ddd; }
+    }
+  </style>
+</head>
+<body>
+  <h1>${digest.title}</h1>
+  <div class="citation">Citation: ${digest.citation}</div>
+  ${digest.topic ? `<div class="topic"><strong>Topic:</strong> ${digest.topic}</div>` : ''}
+  
+  ${digest.facts ? `<h2>Facts</h2><div class="section">${digest.facts}</div>` : ''}
+  ${digest.issue ? `<h2>Issue</h2><div class="section">${digest.issue}</div>` : ''}
+  ${digest.ruling ? `<h2>Ruling</h2><div class="section">${digest.ruling}</div>` : ''}
+  ${digest.doctrine ? `<h2>Doctrine</h2><div class="section">${digest.doctrine}</div>` : ''}
+  ${digest.separateOpinions ? `<h2>Separate Opinions</h2><div class="section">${digest.separateOpinions}</div>` : ''}
+  ${digest.notes ? `<h2>Notes</h2><div class="section">${digest.notes}</div>` : ''}
+  
+  ${
+    digest.tags.length > 0
+      ? `<div class="tags">${digest.tags.map((tag) => `<span class="tag">${tag}</span>`).join('')}</div>`
+      : ''
+  }
+</body>
+</html>
+    `.trim();
+
+    // Open in new window and trigger print
     const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
-    printWindow.document.write(`
-      <html><head><title>${digest.title}</title><style>body{font-family:system-ui;color:#111;background:#f3efe7;padding:40px;}h1{font-size:32px;}h2{font-size:18px;}p{line-height:1.7;}</style></head><body>
-      <h1>${digest.title}</h1>
-      <p><strong>Citation:</strong> ${digest.citation}</p>
-      <p><strong>Topic:</strong> ${digest.topic}</p>
-      <h2>Facts</h2><p>${digest.facts}</p>
-      <h2>Issue</h2><p>${digest.issue}</p>
-      <h2>Ruling</h2><p>${digest.ruling}</p>
-      <h2>Doctrine</h2><p>${digest.doctrine}</p>
-      <h2>Separate Opinions</h2><p>${digest.separateOpinions}</p>
-      <h2>Notes</h2><p>${digest.notes}</p>
-      </body></html>
-    `);
+    if (!printWindow) {
+      alert('Please allow popups to export as PDF');
+      return;
+    }
+    printWindow.document.write(htmlContent);
     printWindow.document.close();
-    printWindow.print();
+    setTimeout(() => {
+      printWindow.print();
+    }, 250);
   };
 
   const selectedDigest = editingId ? digests.find((item) => item.id === editingId) : digests[0];
@@ -241,19 +357,11 @@ export function CaseDigests() {
                   try {
                     const parsed = parseCaseText(rawCaseText);
                     setParsedPreview(parsed);
-                    setForm((state) => ({
-                      ...state,
-                      title: parsed.title || state.title,
-                      citation: parsed.citation || state.citation,
-                      facts: parsed.facts || state.facts,
-                      issue: parsed.issue || state.issue,
-                      ruling: parsed.ruling || state.ruling,
-                      doctrine: parsed.doctrine || state.doctrine,
-                      separateOpinions: parsed.separateOpinions || state.separateOpinions
-                    }));
+                    setEditableDigest(parsed);
                     setParseError('');
+                    setShowQuickDigest(true);
                   } catch (error) {
-                    setParseError('Unable to parse the case text. Please ensure it contains headings like Facts, Issue, or Ruling.');
+                    setParseError('Unable to parse the case text. Please check the content and try again.');
                     setParsedPreview(null);
                   }
                 }}
@@ -267,7 +375,7 @@ export function CaseDigests() {
             {parseError && <p className="mt-3 text-sm text-rose-400">{parseError}</p>}
             {parsedPreview && (
               <div className="mt-6 space-y-4 rounded-3xl border border-white/10 bg-white/5 p-4">
-                <div className="text-xs uppercase tracking-[0.32em] text-stone-400">Parsed preview — edit below before saving</div>
+                <div className="text-xs uppercase tracking-[0.32em] text-stone-400">Parsed preview — edit inline and save below</div>
                 <div className="grid gap-3 text-xs text-stone-300">
                   {parsedPreview.title && (
                     <div>
@@ -388,6 +496,103 @@ export function CaseDigests() {
           )}
         </section>
       </div>
+
+      {showQuickDigest && editableDigest && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+          <Card className="max-h-[90vh] w-full max-w-4xl overflow-y-auto border border-white/10 bg-black/95 p-8 shadow-soft">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm uppercase tracking-[0.32em] text-stone-500">Quick Digest</p>
+                <h2 className="mt-2 text-2xl font-semibold text-white">Refine and save your case</h2>
+              </div>
+              <button onClick={() => setShowQuickDigest(false)} className="text-2xl text-stone-400 hover:text-white">×</button>
+            </div>
+            <div className="mt-6 grid gap-4">
+              <div>
+                <label className="text-sm font-semibold text-stone-300">Case Title</label>
+                <input
+                  className="mt-2 w-full rounded-3xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none transition focus:border-amberSoft/60 focus:ring-2 focus:ring-amberSoft/20"
+                  value={editableDigest.title}
+                  onChange={(e) => setEditableDigest({ ...editableDigest, title: e.target.value })}
+                  placeholder="Case name"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-semibold text-stone-300">Citation</label>
+                <input
+                  className="mt-2 w-full rounded-3xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none transition focus:border-amberSoft/60 focus:ring-2 focus:ring-amberSoft/20"
+                  value={editableDigest.citation}
+                  onChange={(e) => setEditableDigest({ ...editableDigest, citation: e.target.value })}
+                  placeholder="Citation"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-semibold text-stone-300">Facts</label>
+                <textarea
+                  className="mt-2 min-h-[100px] w-full rounded-3xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none transition focus:border-amberSoft/60 focus:ring-2 focus:ring-amberSoft/20"
+                  value={editableDigest.facts}
+                  onChange={(e) => setEditableDigest({ ...editableDigest, facts: e.target.value })}
+                  placeholder="Facts of the case"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-semibold text-stone-300">Issue</label>
+                <textarea
+                  className="mt-2 min-h-[80px] w-full rounded-3xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none transition focus:border-amberSoft/60 focus:ring-2 focus:ring-amberSoft/20"
+                  value={editableDigest.issue}
+                  onChange={(e) => setEditableDigest({ ...editableDigest, issue: e.target.value })}
+                  placeholder="Legal issue or question presented"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-semibold text-stone-300">Ruling</label>
+                <textarea
+                  className="mt-2 min-h-[100px] w-full rounded-3xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none transition focus:border-amberSoft/60 focus:ring-2 focus:ring-amberSoft/20"
+                  value={editableDigest.ruling}
+                  onChange={(e) => setEditableDigest({ ...editableDigest, ruling: e.target.value })}
+                  placeholder="The court's ruling or holding"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-semibold text-stone-300">Doctrine / Rule of Law</label>
+                <textarea
+                  className="mt-2 min-h-[100px] w-full rounded-3xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none transition focus:border-amberSoft/60 focus:ring-2 focus:ring-amberSoft/20"
+                  value={editableDigest.doctrine}
+                  onChange={(e) => setEditableDigest({ ...editableDigest, doctrine: e.target.value })}
+                  placeholder="Legal doctrine or principle established"
+                />
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <Button
+                  onClick={() => {
+                    const newDigest = createDigest({
+                      title: editableDigest.title || 'Untitled Case',
+                      citation: editableDigest.citation,
+                      facts: editableDigest.facts,
+                      issue: editableDigest.issue,
+                      ruling: editableDigest.ruling,
+                      doctrine: editableDigest.doctrine,
+                      separateOpinions: editableDigest.separateOpinions,
+                      topic: '',
+                      tags: []
+                    });
+                    setShowQuickDigest(false);
+                    setRawCaseText('');
+                    setParsedPreview(null);
+                    setEditableDigest(null);
+                    alert('Case digest saved successfully!');
+                  }}
+                >
+                  Save Digest
+                </Button>
+                <Button variant="ghost" onClick={() => setShowQuickDigest(false)}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }
