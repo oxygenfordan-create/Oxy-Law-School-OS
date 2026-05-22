@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useMemo, useState } from 'react';
-import { BookOpen, LightningBolt, Moon, Sun, Triangle, Zap } from 'lucide-react';
+import { BookOpen, Scale, Moon, Sun, Triangle, Zap } from 'lucide-react';
 import { useStore } from './store/useStore';
 import { CaseDigests } from './modules/CaseDigests';
 import { CodalCompanion } from './modules/CodalCompanion';
@@ -16,7 +16,7 @@ import { Badge } from './components/ui/Badge';
 const navigation = [
   { id: 'overview', label: 'Workspace', icon: BookOpen },
   { id: 'digests', label: 'Case Digests', icon: Triangle },
-  { id: 'codal', label: 'Codal Companion', icon: LightningBolt },
+  { id: 'codal', label: 'Codal Companion', icon: Scale },
   { id: 'flashcards', label: 'Flashcards', icon: Zap },
   { id: 'objections', label: 'Objection Simulator', icon: BookOpen }
 ] as const;

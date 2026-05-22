@@ -142,6 +142,17 @@ export async function deleteItem(store: string, id: string): Promise<void> {
   });
 }
 
+export async function updateItem<T extends Record<string, any>>(store: string, id: string, updates: Partial<T>): Promise<void> {
+  const existing = await getItem<T>(store, id);
+  if (!existing) {
+    // If item doesn't exist, create a new one with provided updates and id
+    await putItem(store, { id, ...updates });
+    return;
+  }
+  const merged = { ...existing, ...updates, id } as unknown;
+  await putItem(store, merged);
+}
+
 export async function clearStore(store: string): Promise<void> {
   await transaction(store, 'readwrite', (objectStore) => {
     objectStore.clear();
@@ -149,7 +160,7 @@ export async function clearStore(store: string): Promise<void> {
 }
 
 export async function exportBackup(): Promise<string> {
-  const backup: Partial<StorageSchema> = {};
+  const backup: Record<string, any> = {};
   await Promise.all(
     STORE_NAMES.map(async (store) => {
       backup[store] = await getAll(store);

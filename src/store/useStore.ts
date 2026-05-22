@@ -12,6 +12,7 @@ import {
   clearStore,
   deleteItem,
   exportBackup,
+  importBackup,
   getAll,
   putItem,
   updateItem,
@@ -40,13 +41,16 @@ export type RootState = {
   objections: ObjectionRound[];
   analytics: AnalyticsState;
   quote: string;
+  updateArticle: (id: string, updates: Partial<CodalArticle>) => void;
+  updateCard: (id: string, updates: Partial<FlashcardCard>) => void;
+  toggleArticleBookmark: (id: string) => void;
   setTheme: (theme: 'dark' | 'light') => void;
   setActiveView: (view: ViewMode) => void;
   toggleAmbient: () => void;
   toggleCommand: () => void;
   setSearch: (value: string) => void;
   setOnboardingSeen: () => void;
-  createDigest: (digest: Omit<CaseDigest, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  createDigest: (digest: Partial<CaseDigest>) => string;
   updateDigest: (id: string, updates: Partial<CaseDigest>) => void;
   removeDigest: (id: string) => void;
   toggleFavoriteDigest: (id: string) => void;
@@ -102,17 +106,50 @@ export const useStore = create<RootState>()(
       setSearch: (value) => set({ search: value }),
       setOnboardingSeen: () => set({ onboardingSeen: true }),
       createDigest: (digest) => {
-        const id = `digest-${Math.random().toString(36).slice(2, 10)}`;
+        const id = `digest-${nanoid()}`;
         const now = new Date().toISOString();
         const newDigest: CaseDigest = {
           id,
-          ...digest,
-          favorite: false,
+          title: digest.title ?? '',
+          citation: digest.citation ?? '',
+          topic: digest.topic ?? '',
+          facts: digest.facts ?? '',
+          issue: digest.issue ?? '',
+          ruling: digest.ruling ?? '',
+          doctrine: digest.doctrine ?? '',
+          separateOpinions: digest.separateOpinions ?? '',
+          notes: digest.notes ?? '',
+          favorite: digest.favorite ?? false,
           tags: digest.tags ?? [],
           createdAt: now,
           updatedAt: now
         };
         set((state) => ({ digests: [newDigest, ...state.digests], selectedDigestId: id }));
+        return id;
+      },
+      updateArticle: (id, updates) => {
+        set((state) => {
+          const articles = state.articles.map((a) => (a.id === id ? { ...a, ...updates } : a));
+          const updated = articles.find((a) => a.id === id);
+          if (updated) putItem('articles', updated);
+          return { articles };
+        });
+      },
+      toggleArticleBookmark: (id) => {
+        set((state) => {
+          const articles = state.articles.map((a) => (a.id === id ? { ...a, bookmarks: !a.bookmarks } : a));
+          const updated = articles.find((a) => a.id === id);
+          if (updated) putItem('articles', updated);
+          return { articles };
+        });
+      },
+      updateCard: (id, updates) => {
+        set((state) => {
+          const cards = state.cards.map((c) => (c.id === id ? { ...c, ...updates } : c));
+          const updated = cards.find((c) => c.id === id);
+          if (updated) putItem('cards', updated);
+          return { cards };
+        });
       },
       updateDigest: (id, updates) => {
         set((state) => ({
@@ -141,6 +178,28 @@ export const useStore = create<RootState>()(
       importBackup: async (json) => {
         await importBackup(json);
         location.reload();
+      },
+      initApp: async () => {
+        try {
+          const [digests, articles, decks, cards, objections, settings, activity] = await Promise.all([
+            getAll('digests'),
+            getAll('articles'),
+            getAll('decks'),
+            getAll('cards'),
+            getAll('objections'),
+            getAll('settings'),
+            getAll('activity')
+          ]);
+          set((state) => ({
+            digests: digests.length ? digests as CaseDigest[] : state.digests,
+            articles: articles.length ? (articles as CodalArticle[]) : state.articles,
+            decks: decks.length ? (decks as FlashcardDeck[]) : state.decks,
+            cards: cards.length ? (cards as FlashcardCard[]) : state.cards,
+            objections: objections.length ? (objections as ObjectionRound[]) : state.objections
+          }));
+        } catch (e) {
+          // ignore - keep samples
+        }
       },
       exportBackup: async () => await exportBackup()
     }),

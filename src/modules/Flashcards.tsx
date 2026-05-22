@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Dice, Repeat, Sparkles, Timer } from 'lucide-react';
+import { ArrowRight, Dice1, Repeat, Sparkles, Timer } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
@@ -136,7 +136,7 @@ export function Flashcards() {
                 <p className="text-sm uppercase tracking-[0.32em] text-stone-500">Refresh</p>
                 <h3 className="mt-2 text-2xl font-semibold text-white">Shuffle mode</h3>
               </div>
-              <Dice className="h-6 w-6 text-stone-400" />
+              <Dice1 className="h-6 w-6 text-stone-400" />
             </div>
             <p className="mt-4 text-sm leading-7 text-stone-300">Rotate through difficult cards, challenge your recall, and keep tense review cycles sharp.</p>
             <div className="mt-5 flex gap-3">

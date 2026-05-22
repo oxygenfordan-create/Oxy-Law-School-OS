@@ -16,7 +16,8 @@ const defaultDigest = {
   doctrine: '',
   separateOpinions: '',
   notes: '',
-  tags: ['']
+  tags: [''],
+  favorite: false
 };
 
 export function CaseDigests() {
@@ -54,7 +55,8 @@ export function CaseDigests() {
       doctrine: selected.doctrine,
       separateOpinions: selected.separateOpinions,
       notes: selected.notes,
-      tags: selected.tags
+      tags: selected.tags,
+      favorite: selected.favorite
     });
   };
 
@@ -91,7 +93,7 @@ export function CaseDigests() {
           <p className="mt-3 max-w-2xl text-sm leading-7 text-stone-300">Build concise legal summaries, tag critical doctrine, and export crisp briefs for rapid review.</p>
         </div>
         <div className="flex flex-wrap gap-3">
-          <Button onClick={() => { createDigest(defaultDigest); setEditingId('digest-' + Math.random().toString(36).slice(2, 10)); }}>
+          <Button onClick={() => { const id = createDigest(defaultDigest); setEditingId(id); }}>
             <Plus className="mr-2 h-4 w-4" /> New Digest
           </Button>
           <Button variant="secondary" onClick={() => setShowTimeline((value) => !value)}>
@@ -173,7 +175,8 @@ export function CaseDigests() {
                   if (editingId && selectedDigest) {
                     updateDigest(selectedDigest.id, { ...form, tags: form.tags.filter(Boolean) });
                   } else {
-                    createDigest({ ...form, tags: form.tags.filter(Boolean) });
+                    const id = createDigest({ ...form, tags: form.tags.filter(Boolean) });
+                    setEditingId(id);
                   }
                   setEditingId(null);
                 }}>
