@@ -20,6 +20,97 @@ const defaultDigest = {
   favorite: false
 };
 
+function parseCaseText(rawText: string) {
+  const normalized = rawText.trim().replace(/\r/g, '');
+  const lines = normalized.split('\n').map((line) => line.trim()).filter(Boolean);
+  let title = '';
+  let citation = '';
+  let bodyLines = [...lines];
+
+  if (bodyLines.length > 1 && /v\.|vs\.|versus/i.test(bodyLines[0])) {
+    title = bodyLines[0];
+    if (/\d/.test(bodyLines[1]) || /(No\.|Case|Supreme Court|Court of Appeals)/i.test(bodyLines[1])) {
+      citation = bodyLines[1];
+      bodyLines = bodyLines.slice(2);
+    } else {
+      bodyLines = bodyLines.slice(1);
+    }
+  } else if (bodyLines.length > 1 && /(No\.|Case|Supreme Court|Court of Appeals|F\.|U\.S\.|S\.Ct\.)/i.test(bodyLines[1])) {
+    title = bodyLines[0];
+    citation = bodyLines[1];
+    bodyLines = bodyLines.slice(2);
+  } else {
+    title = bodyLines[0] ?? '';
+    if (bodyLines[1] && /\d/.test(bodyLines[1])) {
+      citation = bodyLines[1];
+      bodyLines = bodyLines.slice(2);
+    } else {
+      bodyLines = bodyLines.slice(1);
+    }
+  }
+
+  const sectionNames = [
+    'Facts',
+    'Issue',
+    'Issues',
+    'Holding',
+    'Ruling',
+    'Decision',
+    'Doctrine',
+    'Rule',
+    'Separate Opinions',
+    'Concurring',
+    'Dissent'
+  ];
+
+  const sectionText: Record<string, string> = {
+    Facts: '',
+    Issue: '',
+    Issues: '',
+    Holding: '',
+    Ruling: '',
+    Decision: '',
+    Doctrine: '',
+    Rule: '',
+    'Separate Opinions': '',
+    Concurring: '',
+    Dissent: ''
+  };
+
+  let currentSection = 'Facts';
+  bodyLines.forEach((line) => {
+    const headingMatch = line.match(/^(.+?)(?:\:|\.)\s*(.*)$/);
+    if (headingMatch) {
+      const heading = headingMatch[1].trim();
+      const headingKey = sectionNames.find((name) => name.toLowerCase() === heading.toLowerCase());
+      if (headingKey) {
+        currentSection = headingKey;
+        sectionText[currentSection] += headingMatch[2] ? `${headingMatch[2]} ` : '';
+        return;
+      }
+    }
+    sectionText[currentSection] = `${sectionText[currentSection]}${sectionText[currentSection] ? ' ' : ''}${line}`;
+  });
+
+  const paragraphs = bodyLines.join('\n').split(/\n{2,}/).map((paragraph) => paragraph.trim()).filter(Boolean);
+
+  const facts = sectionText.Facts || paragraphs[0] || '';
+  const issue = sectionText.Issue || sectionText.Issues || paragraphs[1] || '';
+  const ruling = sectionText.Ruling || sectionText.Holding || sectionText.Decision || paragraphs[2] || '';
+  const doctrine = sectionText.Doctrine || sectionText.Rule || paragraphs[3] || '';
+  const separateOpinions = sectionText['Separate Opinions'] || sectionText.Concurring || sectionText.Dissent || '';
+
+  return {
+    title: title.trim(),
+    citation: citation.trim(),
+    facts: facts.trim(),
+    issue: issue.trim(),
+    ruling: ruling.trim(),
+    doctrine: doctrine.trim(),
+    separateOpinions: separateOpinions.trim()
+  };
+}
+
 export function CaseDigests() {
   const digests = useStore((state) => state.digests);
   const createDigest = useStore((state) => state.createDigest);
@@ -29,6 +120,8 @@ export function CaseDigests() {
   const [search, setSearch] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(defaultDigest);
+  const [rawCaseText, setRawCaseText] = useState('');
+  const [parseError, setParseError] = useState('');
   const [showTimeline, setShowTimeline] = useState(false);
 
   const filtered = useMemo(() => {
@@ -112,6 +205,48 @@ export function CaseDigests() {
               <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by case, topic, or issue" />
             </div>
           </div>
+          <Card className="rounded-[32px] border border-white/10 bg-black/30 p-5 shadow-soft backdrop-blur-xl">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm uppercase tracking-[0.32em] text-stone-500">Parse case text</p>
+                <h3 className="mt-2 text-xl font-semibold text-white">Extract fields accurately</h3>
+              </div>
+            </div>
+            <Textarea
+              className="mt-4 min-h-[180px]"
+              value={rawCaseText}
+              onChange={(event) => setRawCaseText(event.target.value)}
+              placeholder="Paste a case opinion, judgment, or case brief here to auto-populate the digest fields."
+            />
+            <div className="mt-4 flex flex-wrap gap-3">
+              <Button
+                onClick={() => {
+                  try {
+                    const parsed = parseCaseText(rawCaseText);
+                    setForm((state) => ({
+                      ...state,
+                      title: parsed.title || state.title,
+                      citation: parsed.citation || state.citation,
+                      facts: parsed.facts || state.facts,
+                      issue: parsed.issue || state.issue,
+                      ruling: parsed.ruling || state.ruling,
+                      doctrine: parsed.doctrine || state.doctrine,
+                      separateOpinions: parsed.separateOpinions || state.separateOpinions
+                    }));
+                    setParseError('');
+                  } catch (error) {
+                    setParseError('Unable to parse the case text. Please ensure it contains headings like Facts, Issue, or Ruling.');
+                  }
+                }}
+              >
+                Parse Case
+              </Button>
+              <Button variant="ghost" onClick={() => { setRawCaseText(''); setParseError(''); }}>
+                Clear Input
+              </Button>
+            </div>
+            {parseError && <p className="mt-3 text-sm text-rose-400">{parseError}</p>}
+          </Card>
           <div className="grid gap-4">
             {filtered.map((digest) => (
               <Card key={digest.id} className="group overflow-hidden border-white/10 bg-black/20 p-5 transition hover:border-amberSoft/40 hover:bg-white/5">
