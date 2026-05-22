@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useMemo, useState } from 'react';
-import { BookOpen, Scale, Moon, Sun, Triangle, Zap } from 'lucide-react';
+import { BookOpen, Scale, Moon, Sun, Triangle, Zap, Download } from 'lucide-react';
 import { useStore } from './store/useStore';
 import { CaseDigests } from './modules/CaseDigests';
 import { CodalCompanion } from './modules/CodalCompanion';
@@ -12,6 +12,16 @@ import { Button } from './components/ui/Button';
 import { Card } from './components/ui/Card';
 import { Input } from './components/ui/Input';
 import { Badge } from './components/ui/Badge';
+import {
+  exportNotesAsTxt,
+  exportDigestsAsMarkdown,
+  exportDigestsAsJson,
+  exportFlashcardsAsCsv,
+  exportFlashcardsAsJson,
+  exportObjectionsAsJson,
+  exportCodalsAsJson,
+  exportEverything
+} from './util/exportHelpers';
 
 const navigation = [
   { id: 'overview', label: 'Workspace', icon: BookOpen },
@@ -37,6 +47,7 @@ export default function App() {
   const digests = useStore((state) => state.digests);
   const articles = useStore((state) => state.articles);
   const cards = useStore((state) => state.cards);
+  const objections = useStore((state) => state.objections);
   const notes = useStore((state) => state.notes);
   const setNotes = useStore((state) => state.setNotes);
   const analytics = useStore((state) => state.analytics);
@@ -311,6 +322,92 @@ export default function App() {
                           <p className="mt-2 text-sm text-stone-300">Build momentum with quick notes, then move to courtroom simulation.</p>
                         </Card>
                       </div>
+                      <Card className="border border-white/10 bg-black/30 p-6">
+                        <div className="flex items-center justify-between gap-4">
+                          <div>
+                            <p className="text-sm uppercase tracking-[0.32em] text-stone-500">Data export</p>
+                            <h3 className="mt-2 text-xl font-semibold text-white">Download your content</h3>
+                            <p className="mt-2 text-sm text-stone-300">Export notes, digests, flashcards, and more to backup or upload to Google Drive.</p>
+                          </div>
+                        </div>
+                        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                          <Button
+                            variant="secondary"
+                            onClick={() => exportNotesAsTxt(notes)}
+                            className="text-xs"
+                          >
+                            <Download className="mr-2 h-4 w-4" /> Notes (.txt)
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            onClick={() => exportDigestsAsMarkdown(digests)}
+                            className="text-xs"
+                          >
+                            <Download className="mr-2 h-4 w-4" /> Digests (.md)
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            onClick={() => exportFlashcardsAsCsv(cards)}
+                            className="text-xs"
+                          >
+                            <Download className="mr-2 h-4 w-4" /> Flashcards (.csv)
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            onClick={() => exportCodalsAsJson(articles)}
+                            className="text-xs"
+                          >
+                            <Download className="mr-2 h-4 w-4" /> Codals (.json)
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            onClick={() => exportObjectionsAsJson(objections)}
+                            className="text-xs"
+                          >
+                            <Download className="mr-2 h-4 w-4" /> Objections (.json)
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            onClick={() => exportDigestsAsJson(digests)}
+                            className="text-xs"
+                          >
+                            <Download className="mr-2 h-4 w-4" /> Digests (.json)
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            onClick={() => exportFlashcardsAsJson(cards)}
+                            className="text-xs"
+                          >
+                            <Download className="mr-2 h-4 w-4" /> Flashcards (.json)
+                          </Button>
+                          <Button
+                            onClick={() =>
+                              exportEverything({
+                                notes,
+                                digests,
+                                flashcards: cards,
+                                objections,
+                                codals: articles
+                              })
+                            }
+                            className="text-xs"
+                          >
+                            <Download className="mr-2 h-4 w-4" /> Everything (.json)
+                          </Button>
+                        </div>
+                        <p className="mt-4 text-xs text-stone-400">
+                          💡 After downloading, you can manually upload files to your Google Drive folder at{' '}
+                          <a
+                            href="https://drive.google.com/drive/folders/1kqFbX_iAcn5AAL6Qtn2CEHU_mbuiiqYv?usp=sharing"
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-amberSoft hover:underline"
+                          >
+                            your Drive folder
+                          </a>
+                          .
+                        </p>
+                      </Card>
                     </div>
                   )}
                   {activeView === 'digests' && <CaseDigests />}

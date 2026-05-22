@@ -22,92 +22,99 @@ const defaultDigest = {
 
 function parseCaseText(rawText: string) {
   const normalized = rawText.trim().replace(/\r/g, '');
-  const lines = normalized.split('\n').map((line) => line.trim()).filter(Boolean);
+  const lines = normalized.split('\n').map((line) => line.trim());
+
+  // Extract title and citation from the top
   let title = '';
   let citation = '';
-  let bodyLines = [...lines];
+  let contentStart = 0;
 
-  if (bodyLines.length > 1 && /v\.|vs\.|versus/i.test(bodyLines[0])) {
-    title = bodyLines[0];
-    if (/\d/.test(bodyLines[1]) || /(No\.|Case|Supreme Court|Court of Appeals)/i.test(bodyLines[1])) {
-      citation = bodyLines[1];
-      bodyLines = bodyLines.slice(2);
-    } else {
-      bodyLines = bodyLines.slice(1);
-    }
-  } else if (bodyLines.length > 1 && /(No\.|Case|Supreme Court|Court of Appeals|F\.|U\.S\.|S\.Ct\.)/i.test(bodyLines[1])) {
-    title = bodyLines[0];
-    citation = bodyLines[1];
-    bodyLines = bodyLines.slice(2);
-  } else {
-    title = bodyLines[0] ?? '';
-    if (bodyLines[1] && /\d/.test(bodyLines[1])) {
-      citation = bodyLines[1];
-      bodyLines = bodyLines.slice(2);
-    } else {
-      bodyLines = bodyLines.slice(1);
+  // First non-empty line is often the case name
+  if (lines.length > 0 && lines[0]) {
+    title = lines[0];
+    contentStart = 1;
+  }
+
+  // Look for citation in the next few lines (contains numbers, court abbreviations, or year)
+  for (let i = contentStart; i < Math.min(contentStart + 5, lines.length); i++) {
+    if (/(\d{1,3}\s+[A-Z]{0,3}\s+\d{3}|U\.S\.|S\.Ct\.|F\.|No\.|Case No\.|[0-9]{4})/.test(lines[i])) {
+      citation = lines[i];
+      contentStart = i + 1;
+      break;
     }
   }
 
-  const sectionNames = [
-    'Facts',
-    'Issue',
-    'Issues',
-    'Holding',
-    'Ruling',
-    'Decision',
-    'Doctrine',
-    'Rule',
-    'Separate Opinions',
-    'Concurring',
-    'Dissent'
-  ];
-
-  const sectionText: Record<string, string> = {
-    Facts: '',
-    Issue: '',
-    Issues: '',
-    Holding: '',
-    Ruling: '',
-    Decision: '',
-    Doctrine: '',
-    Rule: '',
-    'Separate Opinions': '',
-    Concurring: '',
-    Dissent: ''
+  // Extract section headers more robustly
+  const sectionPatterns: Record<string, RegExp> = {
+    facts: /^(FACTS|Facts|STATEMENT OF FACTS|Statement of Facts|Background|Background Facts|Relevant Facts)[:\.]?\s*$/i,
+    issue: /^(ISSUE|Issues|Issue|LEGAL ISSUE|Legal Issues|Question Presented|Question Presented)[:\.]?\s*$/i,
+    ruling: /^(RULING|Holding|HOLDING|Decision|DECISION|Court's Decision|Court's Holding)[:\.]?\s*$/i,
+    doctrine: /^(DOCTRINE|Rule of Law|RULE OF LAW|Legal Rule|Applicable Law|APPLICABLE LAW|Analysis|ANALYSIS|Discussion|DISCUSSION)[:\.]?\s*$/i,
+    opinions: /^(SEPARATE OPINIONS|Concurring|CONCURRING|Dissenting|DISSENTING|Dissent|Opinion)[:\.]?\s*$/i
   };
 
-  let currentSection = 'Facts';
-  bodyLines.forEach((line) => {
-    const headingMatch = line.match(/^(.+?)(?:\:|\.)\s*(.*)$/);
-    if (headingMatch) {
-      const heading = headingMatch[1].trim();
-      const headingKey = sectionNames.find((name) => name.toLowerCase() === heading.toLowerCase());
-      if (headingKey) {
-        currentSection = headingKey;
-        sectionText[currentSection] += headingMatch[2] ? `${headingMatch[2]} ` : '';
-        return;
+  const sections: Record<string, string[]> = {
+    facts: [],
+    issue: [],
+    ruling: [],
+    doctrine: [],
+    opinions: []
+  };
+
+  let currentSection = 'facts';
+  let contentLines = lines.slice(contentStart).filter(Boolean);
+
+  contentLines.forEach((line) => {
+    // Check if this line is a section header
+    let foundHeader = false;
+    for (const [sectionKey, pattern] of Object.entries(sectionPatterns)) {
+      if (pattern.test(line)) {
+        currentSection = sectionKey;
+        foundHeader = true;
+        break;
       }
     }
-    sectionText[currentSection] = `${sectionText[currentSection]}${sectionText[currentSection] ? ' ' : ''}${line}`;
+
+    // If it's not a header, add it to the current section
+    if (!foundHeader && line.length > 0) {
+      sections[currentSection].push(line);
+    }
   });
 
-  const paragraphs = bodyLines.join('\n').split(/\n{2,}/).map((paragraph) => paragraph.trim()).filter(Boolean);
+  // Join sections and clean up
+  const joinSection = (sectionContent: string[]): string =>
+    sectionContent.join(' ').replace(/\s+/g, ' ').trim();
 
-  const facts = sectionText.Facts || paragraphs[0] || '';
-  const issue = sectionText.Issue || sectionText.Issues || paragraphs[1] || '';
-  const ruling = sectionText.Ruling || sectionText.Holding || sectionText.Decision || paragraphs[2] || '';
-  const doctrine = sectionText.Doctrine || sectionText.Rule || paragraphs[3] || '';
-  const separateOpinions = sectionText['Separate Opinions'] || sectionText.Concurring || sectionText.Dissent || '';
+  // If we didn't find explicit sections, use heuristics to split paragraphs
+  if (
+    !Object.values(sections).some((section) => section.length > 0) &&
+    contentLines.length > 0
+  ) {
+    const paragraphs = contentLines
+      .join('\n')
+      .split(/\n{2,}/)
+      .map((p) => p.trim())
+      .filter(Boolean);
+
+    return {
+      title: title.trim(),
+      citation: citation.trim(),
+      facts: paragraphs[0] || '',
+      issue: paragraphs[1] || '',
+      ruling: paragraphs[2] || '',
+      doctrine: paragraphs[3] || '',
+      separateOpinions: paragraphs.slice(4).join('\n\n') || ''
+    };
+  }
 
   return {
     title: title.trim(),
     citation: citation.trim(),
-    facts: facts.trim(),
-    issue: issue.trim(),
-    ruling: ruling.trim(),
-    doctrine: doctrine.trim(),
-    separateOpinions: separateOpinions.trim()
+    facts: joinSection(sections.facts),
+    issue: joinSection(sections.issue),
+    ruling: joinSection(sections.ruling),
+    doctrine: joinSection(sections.doctrine),
+    separateOpinions: joinSection(sections.opinions)
   };
 }
 
@@ -122,6 +129,7 @@ export function CaseDigests() {
   const [form, setForm] = useState(defaultDigest);
   const [rawCaseText, setRawCaseText] = useState('');
   const [parseError, setParseError] = useState('');
+  const [parsedPreview, setParsedPreview] = useState<ReturnType<typeof parseCaseText> | null>(null);
   const [showTimeline, setShowTimeline] = useState(false);
 
   const filtered = useMemo(() => {
@@ -212,6 +220,15 @@ export function CaseDigests() {
                 <h3 className="mt-2 text-xl font-semibold text-white">Extract fields accurately</h3>
               </div>
             </div>
+            <div className="mt-4 rounded-3xl bg-white/5 p-4 text-xs leading-6 text-stone-400">
+              <p className="font-semibold text-stone-300">Best results:</p>
+              <ul className="mt-2 space-y-1">
+                <li>• Paste the full court opinion or case brief text</li>
+                <li>• Case name and citation should appear at the top</li>
+                <li>• Section headers (FACTS, ISSUE, RULING, etc.) help with extraction</li>
+                <li>• Edit any section manually after parsing if needed</li>
+              </ul>
+            </div>
             <Textarea
               className="mt-4 min-h-[180px]"
               value={rawCaseText}
@@ -223,6 +240,7 @@ export function CaseDigests() {
                 onClick={() => {
                   try {
                     const parsed = parseCaseText(rawCaseText);
+                    setParsedPreview(parsed);
                     setForm((state) => ({
                       ...state,
                       title: parsed.title || state.title,
@@ -236,16 +254,48 @@ export function CaseDigests() {
                     setParseError('');
                   } catch (error) {
                     setParseError('Unable to parse the case text. Please ensure it contains headings like Facts, Issue, or Ruling.');
+                    setParsedPreview(null);
                   }
                 }}
               >
                 Parse Case
               </Button>
-              <Button variant="ghost" onClick={() => { setRawCaseText(''); setParseError(''); }}>
+              <Button variant="ghost" onClick={() => { setRawCaseText(''); setParseError(''); setParsedPreview(null); }}>
                 Clear Input
               </Button>
             </div>
             {parseError && <p className="mt-3 text-sm text-rose-400">{parseError}</p>}
+            {parsedPreview && (
+              <div className="mt-6 space-y-4 rounded-3xl border border-white/10 bg-white/5 p-4">
+                <div className="text-xs uppercase tracking-[0.32em] text-stone-400">Parsed preview — edit below before saving</div>
+                <div className="grid gap-3 text-xs text-stone-300">
+                  {parsedPreview.title && (
+                    <div>
+                      <p className="font-semibold text-white">Title</p>
+                      <p className="mt-1 line-clamp-2">{parsedPreview.title}</p>
+                    </div>
+                  )}
+                  {parsedPreview.citation && (
+                    <div>
+                      <p className="font-semibold text-white">Citation</p>
+                      <p className="mt-1 line-clamp-2">{parsedPreview.citation}</p>
+                    </div>
+                  )}
+                  {parsedPreview.facts && (
+                    <div>
+                      <p className="font-semibold text-white">Facts</p>
+                      <p className="mt-1 line-clamp-3">{parsedPreview.facts}</p>
+                    </div>
+                  )}
+                  {parsedPreview.issue && (
+                    <div>
+                      <p className="font-semibold text-white">Issue</p>
+                      <p className="mt-1 line-clamp-3">{parsedPreview.issue}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </Card>
           <div className="grid gap-4">
             {filtered.map((digest) => (
