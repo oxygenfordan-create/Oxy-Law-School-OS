@@ -5,11 +5,11 @@ export default {
   theme: {
     extend: {
       colors: {
-        ink: '#110f12',
+        ink: '#091428',
         parchment: '#f4ece1',
-        amberSoft: '#d9b49c',
+        amberSoft: '#4f8cff',
         stone: '#2e2a2e',
-        veil: '#141217'
+        veil: '#0f172a'
       },
       boxShadow: {
         glow: '0 24px 80px rgba(0,0,0,0.24)',

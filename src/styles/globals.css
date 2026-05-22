@@ -15,14 +15,20 @@ html, body, #root {
 }
 
 body {
-  background: radial-gradient(circle at top, rgba(255,255,255,0.06), transparent 28%),
-    linear-gradient(180deg, #110f12 0%, #09080a 100%);
+  background: radial-gradient(circle at top, rgba(79, 140, 255, 0.08), transparent 28%),
+    linear-gradient(180deg, #06102a 0%, #040715 100%);
   overflow-x: hidden;
 }
 
 * {
   box-sizing: border-box;
 }
+
+::selection {
+  background: rgba(96, 165, 250, 0.3);
+  color: #f4ece1;
+}
+
 
 ::selection {
   background: rgba(217, 180, 156, 0.35);

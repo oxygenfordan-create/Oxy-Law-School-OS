@@ -33,16 +33,22 @@ export default function App() {
   const toggleAmbient = useStore((state) => state.toggleAmbient);
   const toggleCommand = useStore((state) => state.toggleCommand);
   const setOnboardingSeen = useStore((state) => state.setOnboardingSeen);
+  const initApp = useStore((state) => state.initApp);
   const digests = useStore((state) => state.digests);
   const articles = useStore((state) => state.articles);
   const cards = useStore((state) => state.cards);
+  const notes = useStore((state) => state.notes);
+  const setNotes = useStore((state) => state.setNotes);
+  const analytics = useStore((state) => state.analytics);
+  const toggleHeatmapDay = useStore((state) => state.toggleHeatmapDay);
 
   const [landingVisible, setLandingVisible] = useState(true);
   const [heroSearch, setHeroSearch] = useState('');
 
   useEffect(() => {
     document.body.classList.toggle('light', theme === 'light');
-  }, [theme]);
+    initApp();
+  }, [theme, initApp]);
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -88,7 +94,7 @@ export default function App() {
                 </div>
                 <div className="space-y-6">
                   <div className="space-y-4">
-                    <p className="text-sm uppercase tracking-[0.32em] text-stone-300">The Operating System for Law Students</p>
+                    <p className="text-sm uppercase tracking-[0.32em] text-stone-300">The Operating System for Law Students by Oxygen Fordan</p>
                     <h1 className="text-4xl font-semibold leading-tight tracking-[-0.04em] text-white sm:text-6xl">
                       The second brain for case law, codal mastery, flashcards, and courtroom readiness.
                     </h1>
@@ -153,8 +159,8 @@ export default function App() {
         <div className="relative grid min-h-screen grid-cols-1 gap-6 px-4 pb-12 pt-6 lg:grid-cols-[280px_1fr] lg:px-8 xl:px-12">
           <aside className="space-y-7 rounded-[32px] border border-white/10 bg-black/30 p-6 shadow-glow backdrop-blur-xl">
             <div className="space-y-3">
-              <p className="text-xs uppercase tracking-[0.4em] text-stone-500">Law School OS</p>
-              <h2 className="text-3xl font-semibold text-white">Command Center</h2>
+              <p className="text-xs uppercase tracking-[0.4em] text-stone-500">The Operating System for Law Students</p>
+              <h2 className="text-3xl font-semibold text-white">by Oxygen Fordan</h2>
               <p className="text-sm leading-6 text-stone-400">Navigate with keyboard shortcuts, launch modules, and maintain momentum.</p>
             </div>
             <div className="space-y-3">
@@ -232,10 +238,28 @@ export default function App() {
                     </button>
                   </div>
                   <div className="mt-6 grid grid-cols-7 gap-2">
-                    {Array.from({ length: 28 }).map((_, index) => (
-                      <div key={index} className={`h-10 rounded-2xl ${index % 5 === 0 ? 'bg-amberSoft/90' : 'bg-white/10'}`} />
-                    ))}
+                    {Array.from({ length: 28 }).map((_, index) => {
+                      const dayKey = `day-${index + 1}`;
+                      const isActive = analytics.activeDays.includes(dayKey);
+                      return (
+                        <button
+                          key={dayKey}
+                          onClick={() => toggleHeatmapDay(dayKey)}
+                          className={`h-10 rounded-2xl transition ${isActive ? 'bg-amberSoft/90' : 'bg-white/10 hover:bg-white/20'}`}
+                        />
+                      );
+                    })}
                   </div>
+                  <p className="mt-4 text-xs uppercase tracking-[0.32em] text-stone-500">Tap to mark your study days</p>
+                </Card>
+                <Card className="border border-white/10 bg-black/30 p-5">
+                  <p className="text-xs uppercase tracking-[0.32em] text-stone-500">Notes</p>
+                  <textarea
+                    className="mt-4 min-h-[120px] w-full rounded-3xl border border-white/10 bg-black/20 p-4 text-sm text-white outline-none transition focus:border-amberSoft/60 focus:ring-2 focus:ring-amberSoft/20"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="Capture your personal study notes or case reflections here..."
+                  />
                 </Card>
                 <Card className="border border-white/10 bg-black/30 p-5">
                   <p className="text-xs uppercase tracking-[0.32em] text-stone-500">Search</p>

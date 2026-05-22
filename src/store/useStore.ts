@@ -41,8 +41,16 @@ export type RootState = {
   objections: ObjectionRound[];
   analytics: AnalyticsState;
   quote: string;
+  notes: string;
   updateArticle: (id: string, updates: Partial<CodalArticle>) => void;
+  createArticle: (article: Partial<CodalArticle>) => string;
+  createDeck: (deck: Partial<FlashcardDeck>) => string;
+  createCard: (card: Partial<FlashcardCard>) => string;
+  deleteCard: (id: string) => void;
   updateCard: (id: string, updates: Partial<FlashcardCard>) => void;
+  createObjection: (round: Partial<ObjectionRound>) => string;
+  updateObjection: (id: string, updates: Partial<ObjectionRound>) => void;
+  deleteObjection: (id: string) => void;
   toggleArticleBookmark: (id: string) => void;
   setTheme: (theme: 'dark' | 'light') => void;
   setActiveView: (view: ViewMode) => void;
@@ -50,6 +58,8 @@ export type RootState = {
   toggleCommand: () => void;
   setSearch: (value: string) => void;
   setOnboardingSeen: () => void;
+  setNotes: (value: string) => void;
+  toggleHeatmapDay: (day: string) => void;
   createDigest: (digest: Partial<CaseDigest>) => string;
   updateDigest: (id: string, updates: Partial<CaseDigest>) => void;
   removeDigest: (id: string) => void;
@@ -95,6 +105,7 @@ export const useStore = create<RootState>()(
       objections: sampleObjections,
       analytics: defaultAnalytics,
       quote: 'Every brief should read like a forensic story, not a textbook chapter.',
+      notes: '',
       setTheme: (theme) => {
         saveTheme(theme);
         document.body.classList.toggle('light', theme === 'light');
@@ -105,6 +116,15 @@ export const useStore = create<RootState>()(
       toggleCommand: () => set((state) => ({ isCommandOpen: !state.isCommandOpen })),
       setSearch: (value) => set({ search: value }),
       setOnboardingSeen: () => set({ onboardingSeen: true }),
+      setNotes: (value) => set({ notes: value }),
+      toggleHeatmapDay: (day) => {
+        set((state) => {
+          const activeDays = state.analytics.activeDays.includes(day)
+            ? state.analytics.activeDays.filter((existing) => existing !== day)
+            : [...state.analytics.activeDays, day];
+          return { analytics: { ...state.analytics, activeDays } };
+        });
+      },
       createDigest: (digest) => {
         const id = `digest-${nanoid()}`;
         const now = new Date().toISOString();
@@ -135,6 +155,23 @@ export const useStore = create<RootState>()(
           return { articles };
         });
       },
+      createArticle: (article) => {
+        const id = `article-${nanoid()}`;
+        const newArticle: CodalArticle = {
+          id,
+          number: article.number ?? `Art. ${Math.floor(Math.random() * 1000)}`,
+          title: article.title ?? 'Untitled Provision',
+          text: article.text ?? '',
+          plainEnglish: article.plainEnglish ?? '',
+          annotations: article.annotations ?? '',
+          bookmarks: article.bookmarks ?? false,
+          color: article.color ?? 'amber',
+          related: article.related ?? []
+        };
+        set((state) => ({ articles: [newArticle, ...state.articles] }));
+        putItem('articles', newArticle);
+        return id;
+      },
       toggleArticleBookmark: (id) => {
         set((state) => {
           const articles = state.articles.map((a) => (a.id === id ? { ...a, bookmarks: !a.bookmarks } : a));
@@ -142,6 +179,40 @@ export const useStore = create<RootState>()(
           if (updated) putItem('articles', updated);
           return { articles };
         });
+      },
+      createDeck: (deck) => {
+        const id = `deck-${nanoid()}`;
+        const newDeck: FlashcardDeck = {
+          id,
+          title: deck.title ?? 'New Deck',
+          description: deck.description ?? 'Edit this deck to match your topic.'
+        };
+        set((state) => ({ decks: [newDeck, ...state.decks], selectedDeckId: id }));
+        putItem('decks', newDeck);
+        return id;
+      },
+      createCard: (card) => {
+        const id = `card-${nanoid()}`;
+        const now = new Date().toISOString();
+        const deckId = card.deckId ?? get().selectedDeckId ?? 'deck-1';
+        const newCard: FlashcardCard = {
+          id,
+          deckId,
+          front: card.front ?? 'New Question',
+          back: card.back ?? 'New Answer',
+          difficulty: card.difficulty ?? 'medium',
+          mastery: card.mastery ?? 0,
+          nextReview: card.nextReview ?? now,
+          lastReviewed: card.lastReviewed ?? '',
+          isDifficult: card.isDifficult ?? false
+        };
+        set((state) => ({ cards: [newCard, ...state.cards] }));
+        putItem('cards', newCard);
+        return id;
+      },
+      deleteCard: (id) => {
+        set((state) => ({ cards: state.cards.filter((card) => card.id !== id) }));
+        deleteItem('cards', id);
       },
       updateCard: (id, updates) => {
         set((state) => {
@@ -151,6 +222,27 @@ export const useStore = create<RootState>()(
           return { cards };
         });
       },
+      createObjection: (round) => {
+        const id = `objection-${nanoid()}`;
+        const options = round.options ?? ['Option 1', 'Option 2', 'Option 3', 'Option 4'];
+        const newRound: ObjectionRound = {
+          id,
+          category: round.category ?? 'Uncategorized',
+          prompt: round.prompt ?? 'New objection scenario',
+          options,
+          answer: round.answer ?? options[0],
+          explanation: round.explanation ?? ''
+        };
+        set((state) => ({ objections: [newRound, ...state.objections] }));
+        putItem('objections', newRound);
+        return id;
+      },
+      updateObjection: (id, updates) => {
+        set((state) => ({
+          objections: state.objections.map((round) => (round.id === id ? { ...round, ...updates } : round))
+        }));
+      },
+      deleteObjection: (id) => set((state) => ({ objections: state.objections.filter((round) => round.id !== id) })),
       updateDigest: (id, updates) => {
         set((state) => ({
           digests: state.digests.map((item) =>
